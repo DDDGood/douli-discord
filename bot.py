@@ -7,11 +7,14 @@ from dotenv import load_dotenv
 import os
 import asyncio
 import logging
-import random  # 添加此行
+import random
 import atexit
+from dataclasses import dataclass, field
+from typing import List, Tuple
 
-# 在文件頂部設置日誌
-logging.basicConfig(level=logging.INFO)
+# 在文件頂部設置日誌，允許從環境變數設置日誌級別
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(level=getattr(logging, log_level))
 
 local_tz = datetime.now().astimezone().tzinfo
 
@@ -45,20 +48,26 @@ intents.reactions = True
 # 創建 bot 實例
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+@dataclass
+class CheckinRecord:
+    username: str
+    checkin_time: str
+    period: str
+
 # 全局變量
 checkin_message = None
-user_checkins = {}
-checkin_message_ids = []
+checkin_message_ids: List[int] = []
+user_checkins: List[CheckinRecord] = []
 
 # 寫入簽到紀錄到文件的函數
-def write_checkin_record(username, checkin_time, period):
+def write_checkin_record(record: CheckinRecord):
     filename = f"checkin_records_{datetime.now().strftime('%Y-%m-%d')}.csv"
     is_new_file = not os.path.exists(filename)
     with open(filename, 'a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         if is_new_file:
             writer.writerow(["使用者", "簽到時間", "時段"])
-        writer.writerow([username, checkin_time, period])
+        writer.writerow([record.username, record.checkin_time, record.period])
 
 # 修改 on_ready 事件
 @bot.event
@@ -101,8 +110,9 @@ async def send_checkin_message(message, period, button_label):
         
         async def button_callback(interaction):
             checkin_time = datetime.now(pytz.timezone('Asia/Taipei')).strftime("%Y-%m-%d %H:%M:%S")
-            user_checkins[interaction.user.name] = (checkin_time, period)
-            write_checkin_record(interaction.user.name, checkin_time, period)
+            record = CheckinRecord(interaction.user.name, checkin_time, period)
+            user_checkins.append(record)
+            write_checkin_record(record)
             await interaction.response.send_message(f"{period}簽到成功！", ephemeral=True)
         
         button.callback = button_callback
@@ -110,7 +120,6 @@ async def send_checkin_message(message, period, button_label):
         
         checkin_message = await channel.send(f"{message}\n請點擊按鈕簽到！", view=view)
         checkin_message_ids.append(checkin_message.id)
-        user_checkins.clear()
         logging.info(f"{period}消息已發送")
     except Exception as e:
         logging.error(f"發送消息時發生錯誤: {e}")
@@ -134,8 +143,8 @@ async def manual_checkin_message(ctx):
 async def view_checkins(ctx):
     if ctx.author.guild_permissions.administrator:
         response = "今日簽到紀錄:\n"
-        for user, (time, period) in user_checkins.items():
-            response += f"{user} ({period}): {time}\n"
+        for record in user_checkins:
+            response += f"{record.username} ({record.period}): {record.checkin_time}\n"
         await ctx.send(response)
 
 @bot.command(name='導出簽到')
@@ -145,8 +154,8 @@ async def export_checkins(ctx):
         with open('checkins.csv', 'w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
             writer.writerow(["使用者", "簽到時間", "時段"])
-            for user, (time, period) in user_checkins.items():
-                writer.writerow([user, time, period])
+            for record in user_checkins:
+                writer.writerow([record.username, record.checkin_time, record.period])
         await ctx.send("簽到紀錄已導出為 CSV 文件。", file=discord.File('checkins.csv'))
 
 # 新增刪除舊消息的函數
