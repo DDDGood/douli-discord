@@ -1,0 +1,6 @@
+**/.vscode
+**/.vs
+**/*.csproj
+**/*.sln
+.env
+checkin_records*.csv

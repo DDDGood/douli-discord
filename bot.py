@@ -1,0 +1,175 @@
+import discord
+from discord.ext import commands, tasks
+from datetime import time, datetime, timedelta
+import pytz
+import csv
+from dotenv import load_dotenv
+import os
+import asyncio
+import logging
+import random  # 添加此行
+import atexit
+
+# 在文件頂部設置日誌
+logging.basicConfig(level=logging.INFO)
+
+local_tz = datetime.now().astimezone().tzinfo
+
+# 設定每日早晚執行一次函式
+morning_time = time(hour=9, minute=0, tzinfo=local_tz)
+evening_time = time(hour=18, minute=0, tzinfo=local_tz)
+
+# 早晚訊息
+morning_messages = [
+    "早安！新的一天開始了，祝你有個美好的一天！",
+    "大家早上好！希望你今天充滿活力和笑容！",
+    "早上好！願你今天順利又愉快！"
+]
+
+evening_messages = [
+    "晚上好！今天辛苦了，記得放鬆一下！",
+    "結束了一天的忙碌，放鬆一下吧！",
+    "晚上好！享受一下輕鬆的時光吧！"
+]
+
+# 載入環境變數
+load_dotenv()
+TOKEN = os.getenv('DISCORD_TOKEN')
+CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
+
+# 設定 bot 的 intents
+intents = discord.Intents.default()
+intents.message_content = True
+intents.reactions = True
+
+# 創建 bot 實例
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+# 全局變量
+checkin_message = None
+user_checkins = {}
+checkin_message_ids = []
+
+# 寫入簽到紀錄到文件的函數
+def write_checkin_record(username, checkin_time, period):
+    filename = f"checkin_records_{datetime.now().strftime('%Y-%m-%d')}.csv"
+    is_new_file = not os.path.exists(filename)
+    with open(filename, 'a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if is_new_file:
+            writer.writerow(["使用者", "簽到時間", "時段"])
+        writer.writerow([username, checkin_time, period])
+
+# 修改 on_ready 事件
+@bot.event
+async def on_ready():
+    print(f'{bot.user} 已連接到 Discord!')
+    scheduled_morning_checkin_message.start()
+    scheduled_evening_checkin_message.start()
+    print("簽到任務已啟動")
+
+# 修改自動簽到函數
+@tasks.loop(time=morning_time)
+async def scheduled_morning_checkin_message():
+    message = random.choice(morning_messages)
+    await send_checkin_message(message, "早上", "早安！")
+
+@tasks.loop(time=evening_time)
+async def scheduled_evening_checkin_message():
+    message = random.choice(evening_messages)
+    await send_checkin_message(message, "晚上", "休息囉！")
+
+async def send_checkin_message(message, period, button_label):
+    try:
+        global checkin_message, checkin_message_ids
+        channel = bot.get_channel(CHANNEL_ID)
+        if channel is None:
+            logging.error(f"無法找到頻道 ID: {CHANNEL_ID}")
+            return
+        
+        # 刪除舊消息
+        for message_id in checkin_message_ids:
+            try:
+                old_message = await channel.fetch_message(message_id)
+                await old_message.delete()
+            except Exception as e:
+                logging.error(f"刪除舊消息時發生錯誤: {e}")
+        checkin_message_ids.clear()
+        
+        view = discord.ui.View(timeout=None)
+        button = discord.ui.Button(label=button_label, style=discord.ButtonStyle.primary)
+        
+        async def button_callback(interaction):
+            checkin_time = datetime.now(pytz.timezone('Asia/Taipei')).strftime("%Y-%m-%d %H:%M:%S")
+            user_checkins[interaction.user.name] = (checkin_time, period)
+            write_checkin_record(interaction.user.name, checkin_time, period)
+            await interaction.response.send_message(f"{period}簽到成功！", ephemeral=True)
+        
+        button.callback = button_callback
+        view.add_item(button)
+        
+        checkin_message = await channel.send(f"{message}\n請點擊按鈕簽到！", view=view)
+        checkin_message_ids.append(checkin_message.id)
+        user_checkins.clear()
+        logging.info(f"{period}消息已發送")
+    except Exception as e:
+        logging.error(f"發送消息時發生錯誤: {e}")
+
+@scheduled_morning_checkin_message.before_loop
+@scheduled_evening_checkin_message.before_loop
+async def before_scheduled_checkin_message():
+    await bot.wait_until_ready()
+    logging.info("Bot 已準備就緒，自動消息任務即將開始")
+
+# 手動觸發消息的命令
+@bot.command(name='手動消息')
+@commands.has_permissions(administrator=True)
+async def manual_checkin_message(ctx):
+    message = "這是一條手動觸發的消息。"
+    await send_checkin_message(message, "手動", "回覆")
+    await ctx.send("手動消息已發送")
+
+@bot.command(name='查看簽到')
+@commands.has_permissions(administrator=True)
+async def view_checkins(ctx):
+    if ctx.author.guild_permissions.administrator:
+        response = "今日簽到紀錄:\n"
+        for user, (time, period) in user_checkins.items():
+            response += f"{user} ({period}): {time}\n"
+        await ctx.send(response)
+
+@bot.command(name='導出簽到')
+@commands.has_permissions(administrator=True)
+async def export_checkins(ctx):
+    if ctx.author.guild_permissions.administrator:
+        with open('checkins.csv', 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(["使用者", "簽到時間", "時段"])
+            for user, (time, period) in user_checkins.items():
+                writer.writerow([user, time, period])
+        await ctx.send("簽到紀錄已導出為 CSV 文件。", file=discord.File('checkins.csv'))
+
+# 新增刪除舊消息的函數
+async def delete_old_messages():
+    global checkin_message_ids
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel is None:
+        logging.error(f"無法找到頻道 ID: {CHANNEL_ID}")
+        return
+    for message_id in checkin_message_ids:
+        try:
+            old_message = await channel.fetch_message(message_id)
+            await old_message.delete()
+        except Exception as e:
+            logging.error(f"刪除舊消息時發生錯誤: {e}")
+    checkin_message_ids.clear()
+
+# 使用 atexit 註冊退出時運行的函數
+def on_exit():
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(delete_old_messages())
+
+atexit.register(on_exit)
+
+# 運行 bot
+bot.run(TOKEN)
