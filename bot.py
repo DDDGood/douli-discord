@@ -59,9 +59,14 @@ checkin_message = None
 checkin_message_ids: List[int] = []
 user_checkins: List[CheckinRecord] = []
 
+# 創建存放簽到記錄的資料夾
+RECORDS_FOLDER = 'checkin_records'
+if not os.path.exists(RECORDS_FOLDER):
+    os.makedirs(RECORDS_FOLDER)
+
 # 寫入簽到紀錄到文件的函數
 def write_checkin_record(record: CheckinRecord):
-    filename = f"checkin_records_{datetime.now().strftime('%Y-%m-%d')}.csv"
+    filename = os.path.join(RECORDS_FOLDER, f"checkin_records_{datetime.now().strftime('%Y-%m-%d')}.csv")
     is_new_file = not os.path.exists(filename)
     with open(filename, 'a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
@@ -151,12 +156,13 @@ async def view_checkins(ctx):
 @commands.has_permissions(administrator=True)
 async def export_checkins(ctx):
     if ctx.author.guild_permissions.administrator:
-        with open('checkins.csv', 'w', newline='', encoding='utf-8') as file:
+        export_path = os.path.join(RECORDS_FOLDER, 'checkins.csv')
+        with open(export_path, 'w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
             writer.writerow(["使用者", "簽到時間", "時段"])
             for record in user_checkins:
                 writer.writerow([record.username, record.checkin_time, record.period])
-        await ctx.send("簽到紀錄已導出為 CSV 文件。", file=discord.File('checkins.csv'))
+        await ctx.send("簽到紀錄已導出為 CSV 文件。", file=discord.File(export_path))
 
 # 新增刪除舊消息的函數
 async def delete_old_messages():
