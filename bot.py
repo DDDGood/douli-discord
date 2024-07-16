@@ -24,15 +24,15 @@ evening_time = time(hour=18, minute=0, tzinfo=local_tz)
 
 # 早晚訊息
 morning_messages = [
-    "早安！新的一天開始了，祝你有個美好的一天！",
-    "大家早上好！希望你今天充滿活力和笑容！",
-    "早上好！願你今天順利又愉快！"
+    "早安～新的一天開始了，祝你有個美好的一天 :smiley:",
+    "大家早安 :sunny: 希望你今天充滿活力和笑容！",
+    "早安～願你今天順利又愉快 :smiling_face_with_3_hearts: "
 ]
 
 evening_messages = [
-    "晚上好！今天辛苦了，記得放鬆一下！",
-    "結束了一天的忙碌，放鬆一下吧！",
-    "晚上好！享受一下輕鬆的時光吧！"
+    "晚安～今天辛苦了，記得放鬆一下 :beers: ",
+    "結束了一天的忙碌，請好好休息 :sleeping: ",
+    "晚安～享受一下輕鬆的時光吧 :partying_face: "
 ]
 
 # 載入環境變數
@@ -136,7 +136,7 @@ async def before_scheduled_checkin_message():
     logging.info("Bot 已準備就緒，自動消息任務即將開始")
 
 # 手動觸發消息的命令
-@bot.command(name='手動消息')
+@bot.command(name='手動')
 @commands.has_permissions(administrator=True)
 async def manual_checkin_message(ctx):
     message = "這是一條手動觸發的消息。"
