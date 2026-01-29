@@ -102,13 +102,19 @@ async def send_checkin_message(message, period, button_label):
             return
         
         # 刪除舊消息
-        for message_id in checkin_message_ids:
-            try:
-                old_message = await channel.fetch_message(message_id)
-                await old_message.delete()
-            except Exception as e:
-                logging.error(f"刪除舊消息時發生錯誤: {e}")
-        checkin_message_ids.clear()
+        # for message_id in checkin_message_ids:
+        #     try:
+        #         old_message = await channel.fetch_message(message_id)
+        #         await old_message.delete()
+        #     except Exception as e:
+        #         logging.error(f"刪除舊消息時發生錯誤: {e}")
+        # checkin_message_ids.clear()
+        
+        try:
+            deleted = await channel.purge(limit=100)
+            logging.info(f"已刪除 {len(deleted)} 則訊息")
+        except Exception as e:
+            logging.error(f"清空頻道訊息時發生錯誤: {e}")
         
         view = discord.ui.View(timeout=None)
         button = discord.ui.Button(label=button_label, style=discord.ButtonStyle.primary)
@@ -124,7 +130,7 @@ async def send_checkin_message(message, period, button_label):
         view.add_item(button)
         
         checkin_message = await channel.send(f"{message}\n請點擊按鈕簽到！", view=view)
-        checkin_message_ids.append(checkin_message.id)
+        # checkin_message_ids.append(checkin_message.id)
         logging.info(f"{period}消息已發送")
     except Exception as e:
         logging.error(f"發送消息時發生錯誤: {e}")
@@ -166,18 +172,24 @@ async def export_checkins(ctx):
 
 # 新增刪除舊消息的函數
 async def delete_old_messages():
-    global checkin_message_ids
+    # global checkin_message_ids
     channel = bot.get_channel(CHANNEL_ID)
     if channel is None:
         logging.error(f"無法找到頻道 ID: {CHANNEL_ID}")
         return
-    for message_id in checkin_message_ids:
-        try:
-            old_message = await channel.fetch_message(message_id)
-            await old_message.delete()
-        except Exception as e:
-            logging.error(f"刪除舊消息時發生錯誤: {e}")
-    checkin_message_ids.clear()
+    # for message_id in checkin_message_ids:
+    #     try:
+    #         old_message = await channel.fetch_message(message_id)
+    #         await old_message.delete()
+    #     except Exception as e:
+    #         logging.error(f"刪除舊消息時發生錯誤: {e}")
+    # checkin_message_ids.clear()
+    # 刪除頻道內所有訊息（限最近的100條，可多次呼叫獲取更多）
+    try:
+        deleted = await channel.purge(limit=100)
+        logging.info(f"已刪除 {len(deleted)} 則訊息")
+    except Exception as e:
+        logging.error(f"清空頻道訊息時發生錯誤: {e}")
 
 # 使用 atexit 註冊退出時運行的函數
 def on_exit():
